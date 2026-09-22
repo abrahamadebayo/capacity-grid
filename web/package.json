@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "react": "19.2.0",
@@ -16,6 +18,7 @@
     "@types/react-dom": "19.2.1",
     "@vitejs/plugin-react": "6.1.1",
     "typescript": "5.9.3",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "vitest": "3.2.4"
   }
 }
