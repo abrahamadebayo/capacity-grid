@@ -18,3 +18,4 @@ left unfinished. Append as you go; a line or two per entry is right.
 - Verified Ana Dec 29 week: API allocated 56 matches SQL sum; over-allocation highlighted in UI. Did not touch Compose/Dockerfile/Makefile/schema/seed.
 - Complexity check: seed has ~126k assignments, ~4.7k overlap the default 3-week window. Kept per-week join on `(start_date, end_date)` → O(W log A + K). A whole-window + LATERAL rewrite scanned all A via person_id and was slower/worse for small W. Response is O(P·W) by design (dense grid). Cap W at 52 in security.
 - Renamed project folder Untitled → capacity-grid.
+- Polish: virtualized the 500-row grid with `@tanstack/react-virtual` (padding rows in tbody). Capacity edit a11y — labelled control, focus return after save/cancel, aria-invalid/live announcements, sr-only over-allocation text, sticky region label.
