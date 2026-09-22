@@ -2,65 +2,59 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
-	"os"
 	"time"
+
+	"capacity/api/config"
+	"capacity/api/handlers"
+	"capacity/api/middleware"
+	"capacity/api/services"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type server struct {
-	db *pgxpool.Pool
-}
-
 func main() {
+	cfg := config.Load()
 	ctx := context.Background()
 
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://capacity:capacity@localhost:5432/capacity?sslmode=disable"
-	}
-
-	db, err := pgxpool.New(ctx, dsn)
+	db, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("connect: %v", err)
 	}
 	defer db.Close()
 
-	for i := 0; i < 30; i++ {
-		if err = db.Ping(ctx); err == nil {
+	var pingErr error
+	for i := 0; i < cfg.DBPingRetries; i++ {
+		if pingErr = db.Ping(ctx); pingErr == nil {
 			break
 		}
-		time.Sleep(time.Second)
+		log.Printf("waiting for database (%d/%d): %v", i+1, cfg.DBPingRetries, pingErr)
+		time.Sleep(cfg.DBPingWait)
 	}
-	if err != nil {
-		log.Fatalf("ping: %v", err)
+	if pingErr != nil {
+		log.Fatalf("ping: %v", pingErr)
 	}
 
-	s := &server{db: db}
+	api := &handlers.API{
+		Capacity: services.NewCapacityService(db),
+		People:   services.NewPeopleService(db),
+		Health:   services.NewHealthService(db),
+	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", s.handleHealth)
-	mux.HandleFunc("GET /api/capacity", s.handleCapacity)
-	mux.HandleFunc("PATCH /api/people/{id}", s.handleUpdatePerson)
+	mux.HandleFunc("GET /api/health", api.HandleHealth)
+	mux.HandleFunc("GET /api/capacity", api.HandleCapacity)
+	mux.HandleFunc("PATCH /api/people/{id}", api.HandleUpdatePerson)
 
-	log.Println("listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
-}
+	handler := middleware.Chain(
+		mux,
+		middleware.Recover,
+		middleware.RequestLog,
+		middleware.SecurityHeaders,
+		middleware.MaxBody(1<<20), // 1 MiB
+	)
 
-func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	var people int
-	if err := s.db.QueryRow(r.Context(), `SELECT count(*) FROM people`).Scan(&people); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "people": people})
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	log.Printf("listening on %s", cfg.ListenAddr)
+	log.Fatal(http.ListenAndServe(cfg.ListenAddr, handler))
 }
