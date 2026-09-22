@@ -13,6 +13,10 @@ import (
 	"capacity/api/services"
 )
 
+func isCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // CapacityReader loads capacity for a range.
 type CapacityReader interface {
 	Get(ctx context.Context, from, to time.Time) (models.CapacityResponse, error)
@@ -44,6 +48,9 @@ func (a *API) HandleCapacity(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := a.Capacity.Get(r.Context(), from, to)
 	if err != nil {
+		if isCanceled(err) {
+			return
+		}
 		log.Printf("capacity: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to load capacity")
 		return

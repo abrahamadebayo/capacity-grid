@@ -23,6 +23,19 @@ func NewCapacityService(db *pgxpool.Pool) *CapacityService {
 	return &CapacityService{db: db}
 }
 
+// capacityQuery complexity (P people, A assignments, W weeks in range):
+//
+//   Allocation uses the (start_date, end_date) index once per week:
+//     O(W · (log A + K_w)) ≈ O(W log A + K) where K_w is overlaps that week
+//     and K = Σ K_w. Day-count math inside the sum is O(1) per overlapping row.
+//
+//   People ⨯ weeks is O(P · W) and unavoidable for a dense grid (zeros included).
+//   Response assembly in Go is also O(P · W).
+//
+// A single whole-window filter + LATERAL week expansion was tried; with this
+// seed Postgres fell back to scanning all A rows via person_id, which is
+// worse for small W. Per-week index probes stay near the matching subset
+// (≈4.7k of 126k for the default 3-week window).
 const capacityQuery = `
 WITH weeks AS (
   SELECT generate_series(
